@@ -1,0 +1,10 @@
+PyAudioWPatch==0.2.12.8
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+onnxruntime>=1.21,<2
+PyQt6==6.9.0  # 6.11 的 PyQt6-Qt6 wheel 漏打包 ICU（Qt6Core 加载报错），锁死 6.9
+pynput>=1.8
+openai>=1.40
+python-dotenv>=1.0
+pymupdf>=1.24.12
+numpy>=2.0

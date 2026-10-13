@@ -1,0 +1,9 @@
+{
+  "_说明": "自定义热键：改 hotkeys 里的值，改完重启程序生效。regenerate=换一版答案，angle=换个角度，hide=隐藏/恢复窗口，quit=退出程序。键名格式：F1 写成 <f1>，Ctrl+Alt+G 写成 <ctrl>+<alt>+g，Shift+F5 写成 <shift>+<f5>。",
+  "hotkeys": {
+    "regenerate": "<f1>",
+    "angle": "<f2>",
+    "hide": "<f3>",
+    "quit": "<f4>"
+  }
+}
