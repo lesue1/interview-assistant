@@ -291,6 +291,63 @@ def test_window():
     ck("信号·翻回含追问", "对，两段都是。" in w2.answer.toPlainText(), True)
 
 
+# —— 7. 启动自检 + 设置窗 ——
+
+def test_setup_and_preflight():
+    print("[7] 启动自检 + 设置窗")
+    import os
+    import tempfile
+
+    import preflight
+    from ui import SetupWindow
+
+    # 自检返回的结构要能直接喂给界面
+    items = preflight.check()
+    ck("自检有返回", isinstance(items, list), True)
+    ck("自检至少给一条", len(items) >= 1, True)
+    for it in items:
+        ck("自检项字段完整", set(it) >= {"level", "title", "fix"}, True)
+        ck("level 合法", it["level"] in ("error", "warn", "info"), True)
+
+    # 用临时的不存在路径验证"缺 .env / 缺素材"能被识别出来
+    orig_env, orig_mat = preflight.ENV, preflight.MATERIALS
+    try:
+        preflight.ENV = os.path.join(tempfile.gettempdir(), "_preflight_no_such_env")
+        r = preflight._check_key()
+        ck("缺 .env 判为 error", r and r[0]["level"], "error")
+        ck("缺 .env 给了怎么补", bool(r and r[0].get("fix")), True)
+        preflight.MATERIALS = os.path.join(tempfile.gettempdir(), "_preflight_no_such_materials")
+        r = preflight._check_materials()
+        ck("缺素材判为 warn", r and r[0]["level"], "warn")
+    finally:
+        preflight.ENV, preflight.MATERIALS = orig_env, orig_mat
+
+    # 设置窗三个输入框都在，点开始要把三个值都传出去
+    sw = SetupWindow()
+    for attr in ("job_input", "company_input", "jd_input", "import_btn", "start_btn"):
+        ck(f"设置窗有 {attr}", hasattr(sw, attr), True)
+    got = []
+    sw.start_requested.connect(lambda *a: got.append(a))
+    sw.job_input.setText("测试岗")
+    sw.company_input.setText("测试公司")
+    sw.jd_input.setPlainText("测试JD全文")
+    sw._on_start()
+    ck("点开始传出 (岗位名, JD, 公司名)", got[0] if got else None,
+       ("测试岗", "测试JD全文", "测试公司"))
+
+    # 岗位名留空要兜底，不能把空串当岗位名
+    got.clear()
+    sw.job_input.setText("   ")
+    sw._on_start()
+    ck("岗位名留空有兜底", got[0][0] if got else None, "模拟面试")
+
+    # 导入简历：文件不存在要返回失败 + 一句人话，而不是抛异常
+    from materials_build import extract_to_materials
+    ok, msg = extract_to_materials("C:/definitely/not/a/real/path.pdf")
+    ck("导入不存在的 PDF → 失败", ok, False)
+    ck("且给了说明文字", bool(msg), True)
+
+
 def main():
     test_coarse_filter()
     test_parser()
@@ -298,6 +355,7 @@ def main():
     test_silent_warning()
     app = QApplication(sys.argv)   # 建窗口前必须先有 QApplication
     test_window()
+    test_setup_and_preflight()
 
     print()
     if _fail:

@@ -51,7 +51,7 @@ def load_materials():
     return out
 
 
-def build_system_prompt(materials, jd):
+def build_system_prompt(materials, jd, company=""):
     materials_block = "\n\n".join(
         f"=== {title} ===\n{body}" for title, body in materials
     ) if materials else "（没读到任何素材，只能按简历常识答，别编具体事实）"
@@ -133,7 +133,7 @@ def build_system_prompt(materials, jd):
      不等于候选人人就在北京办公；除非素材明确写了工作城市，否则不许说"我在 XX 实习"。
    · **别从岗位内容反推面试官的公司是做什么的。** "这个岗位 JD 全是 HR 内容"
      不等于"这家公司做人力资源服务"；"岗位要求写 AI"不等于"这家公司做 AI"。
-     面试官公司的行业和业务，素材没写就是不知道。
+     面试官公司的行业和业务，素材和岗位信息里没写，就是不知道。
    · 别把"想做/意向的岗位"当成"做过的岗位"。
    · 别因为某句话里出现过某个词，就推断出另一个素材没写的事实；
      也别把某一段经历上的细节（数字、地点、时间）搬到另一段经历上。
@@ -158,7 +158,16 @@ def build_system_prompt(materials, jd):
 选材：不同题尽量挑不同的项目/经历来答。成就型挑"成果/影响"最亮眼的，困难型挑"过程最曲折"的，别两个题都套同一个项目。
 
 【岗位方向】
-{jd if jd else "通用 AI + HR 交叉方向"}
+{jd if jd else "（没填 JD —— 按通用方向答，但别编岗位职责）"}
+
+【要面的公司】
+{company if company else "（没填公司名）"}
+- 填了只是让你知道这是哪家公司，可以在答案里自然地提到（"我看到贵司这个岗位……"）。
+- 但**这家公司的业务、行业、规模、产品、近期动态，你一概不许讲**，除非**素材里、
+  或者上面【岗位方向】里**明确写了。为什么：除了那两处，你没有这家公司的可靠信息，
+  凭训练数据"回忆"出来的多半不准或是旧的，候选人照着说出口会被面试官当场拆穿。
+- 反过来说：**如果他真的把公司资料贴在 JD 框里了，那就是可信来源，要正常用。**
+- 被问到"你对我们公司有什么了解"→ 按下面【被问到…】那一节的三段结构答，不许硬讲公司。
 
 【他的真实素材 —— 按主题分块，答题时挑相关的那块用】
 
@@ -167,7 +176,7 @@ def build_system_prompt(materials, jd):
 
 
 class AnswerGenerator:
-    def __init__(self, jd=None):
+    def __init__(self, jd=None, company=""):
         # 读 .env。铁律：禁止硬编码、禁止默认值写法。
         load_dotenv(os.path.join(BASE, ".env"))
         if "DEEPSEEK_API_KEY" not in os.environ:
@@ -185,7 +194,7 @@ class AnswerGenerator:
         # 表单填的 JD 优先；为空回退 jd.txt（换方向的口子仍有效）
         if not jd:
             jd = _read(JD_PATH)
-        self.system_prompt = build_system_prompt(materials, jd)
+        self.system_prompt = build_system_prompt(materials, jd, company)
         self.materials_titles = [t for t, _ in materials]
 
     def generate(self, history, on_chunk, extra="", temperature=0.6):

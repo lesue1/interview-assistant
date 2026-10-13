@@ -108,6 +108,19 @@ CASES = [
         "forbid": [r"\d\.\d+", r"前\s*\d+\s*%", r"\d+\s*/\s*\d+"],
         "why": "素材没有绩点，答案里不许出现 3.5 / 前20% / 5/120 这类编造",
     },
+    {
+        # 公司名故意用一个**不存在**的名字 —— 模型不可能真知道它，
+        # 所以只要它讲出这家公司做什么，就一定是编的。
+        # 填了公司名只该让它知道"要面的是哪家"，用来在答案里提到名字，
+        # 不该让它拿训练数据去"回忆"公司业务（小公司会编）。
+        "name": "⑩ 填了公司名也不许编公司业务",
+        "history": "[面试官] 你对我们公司有什么了解？",
+        "company": "青川量子智研科技有限责任公司",
+        "expect": "new",
+        "forbid": [r"贵公司(是|主要|专注|致力于|从事)", r"贵司(是|主要|专注|致力于|从事)",
+                   r"我了解到贵", r"公司主要(做|业务|产品)"],
+        "why": "只许知道名字，不许讲公司业务",
+    },
 ]
 
 
@@ -185,7 +198,9 @@ def main():
     for case in cases:
         print("=" * 70, flush=True)
         print(f"{case['name']}   期望: {case['why']}", flush=True)
-        got, raw = run_case(gen, case)
+        # 用例可以自带 company，用来验"填了公司名也不许编公司业务"
+        g = AnswerGenerator(None, case["company"]) if case.get("company") else gen
+        got, raw = run_case(g, case)
         ok, note = check(case, got)
         print(f"  模型原话: {raw[:120].replace(chr(10), ' / ')}", flush=True)
         print(f"  解析结果: {note}", flush=True)

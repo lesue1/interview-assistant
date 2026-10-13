@@ -11,8 +11,11 @@ from PyQt6.QtCore import Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPalette
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QSlider, QPushButton, QLabel,
-    QLineEdit, QApplication,
+    QLineEdit, QApplication, QFileDialog,
 )
+
+import preflight
+from materials_build import extract_to_materials
 
 
 class _Panel(QWidget):
@@ -409,48 +412,74 @@ def _placeholder(widget):
 
 
 class SetupWindow(QWidget):
-    """面试前的设置窗：填岗位名 + 粘贴 JD，点「开始面试」才启动采集。
+    """面试前的设置窗：岗位名 / 公司名（选填）/ JD，加一个「导入简历」按钮。
 
-    普通窗口（有边框、可关闭），不套用答案窗的半透明置顶逻辑——
-    这里是"录入"场景，需要能正常输入和聚焦。
+    目标：第一次用的人**不用读文档**就能跑起来 ——
+    启动先自检（缺什么、怎么补都写在界面上），缺简历就当场导一份。
     """
 
-    start_requested = pyqtSignal(str, str)  # (岗位名, jd)
+    start_requested = pyqtSignal(str, str, str)  # (岗位名, jd, 公司名)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("模拟面试")
-        self.resize(480, 440)
+        self.setWindowTitle("面试助手")
+        self.resize(520, 660)
         self._build_ui()
+        self.run_preflight()
+
+    def _label(self, text):
+        lbl = QLabel(text)
+        lbl.setObjectName("fieldLbl")
+        return lbl
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 22)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 18, 24, 18)
+        layout.setSpacing(8)
 
-        title = QLabel("模拟面试 · 新建一场")
+        title = QLabel("面试助手 · 新建一场")
         title.setObjectName("setupTitle")
         layout.addWidget(title)
 
-        job_lbl = QLabel("岗位名称")
-        job_lbl.setObjectName("fieldLbl")
-        layout.addWidget(job_lbl)
+        # 启动自检：缺什么、怎么补
+        self.preflight_box = QLabel("")
+        self.preflight_box.setObjectName("preflight")
+        self.preflight_box.setWordWrap(True)
+        layout.addWidget(self.preflight_box)
 
+        layout.addWidget(self._label("岗位名称"))
         self.job_input = QLineEdit()
-        self.job_input.setObjectName("jobInput")
+        self.job_input.setObjectName("inp")
         self.job_input.setPlaceholderText("如：腾讯AI-HR / AI产品经理")
         _placeholder(self.job_input)
         layout.addWidget(self.job_input)
 
-        jd_lbl = QLabel("岗位 JD（粘贴全文；留空则用 jd.txt）")
-        jd_lbl.setObjectName("fieldLbl")
-        layout.addWidget(jd_lbl)
+        layout.addWidget(self._label("公司名称（选填，只用来让答案提到对的名字）"))
+        self.company_input = QLineEdit()
+        self.company_input.setObjectName("inp")
+        self.company_input.setPlaceholderText("如：腾讯")
+        _placeholder(self.company_input)
+        layout.addWidget(self.company_input)
 
+        layout.addWidget(self._label("岗位 JD（粘贴全文；留空则用 jd.txt）"))
         self.jd_input = QTextEdit()
         self.jd_input.setObjectName("jdInput")
         self.jd_input.setPlaceholderText("粘贴 JD 全文…")
         _placeholder(self.jd_input)
         layout.addWidget(self.jd_input, 1)
+
+        # 素材：这是这工具的价值来源，所以把入口直接放在界面上
+        row = QHBoxLayout()
+        self.import_btn = QPushButton("从简历 PDF 导入素材")
+        self.import_btn.setObjectName("ghostBtn")
+        self.import_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.import_btn.clicked.connect(self._on_import)
+        row.addWidget(self.import_btn)
+        self.import_tip = QLabel("")
+        self.import_tip.setObjectName("importTip")
+        self.import_tip.setWordWrap(True)
+        row.addWidget(self.import_tip, 1)
+        layout.addLayout(row)
 
         self.start_btn = QPushButton("开始面试")
         self.start_btn.setObjectName("startBtn")
@@ -460,34 +489,79 @@ class SetupWindow(QWidget):
 
         self._apply_style()
 
+    # —— 启动自检 ——
+
+    def run_preflight(self):
+        """把缺的东西一次性列清楚。有 error 就不让点开始（点了也是白崩）。"""
+        items = preflight.check()
+        icons = {"error": "❌", "warn": "⚠️", "info": "🎧"}
+        lines, blocked = [], False
+        for it in items:
+            lines.append(f"{icons.get(it['level'], '•')} {it['title']}")
+            if it.get("fix"):
+                lines.append(f"     {it['fix']}")
+            if it["level"] == "error":
+                blocked = True
+        self.preflight_box.setText("\n".join(lines))
+        self.preflight_box.setVisible(bool(lines))
+        self.start_btn.setEnabled(not blocked)
+        self.start_btn.setToolTip("先解决上面标 ❌ 的问题" if blocked else "")
+
+    # —— 导入简历 ——
+
+    def _on_import(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选你的简历 PDF", "", "PDF 文件 (*.pdf)")
+        if not path:
+            return
+        ok, msg = extract_to_materials(path)
+        self.import_tip.setText(("✅ " if ok else "❌ ") + msg)
+        self.import_tip.setStyleSheet(
+            "color: %s; font-size: 12px;" % ("#6ee7a0" if ok else "#ff8a8a"))
+        if ok:
+            self.run_preflight()   # 素材那条警告应该消失了
+
     def _on_start(self):
         job = self.job_input.text().strip() or "模拟面试"
+        company = self.company_input.text().strip()
         jd = self.jd_input.toPlainText().strip()
-        self.start_requested.emit(job, jd)
+        self.start_requested.emit(job, jd, company)
 
     def _apply_style(self):
         self.setStyleSheet("""
             QWidget { background: #17181c; }
             #setupTitle { color: white; font-size: 16px; font-weight: 600; }
             #fieldLbl { color: rgba(255,255,255,0.6); font-size: 12px; }
-            QLineEdit#jobInput {
+            #preflight {
+                color: rgba(255,255,255,0.8); font-size: 12px;
+                background: rgba(255,255,255,0.05); border-radius: 8px;
+                padding: 10px 12px; line-height: 17px;
+            }
+            #importTip { color: rgba(255,255,255,0.6); font-size: 12px; }
+            QLineEdit#inp {
                 color: white; background: #22242a;
                 border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
                 padding: 8px 12px; font-size: 14px;
             }
-            QLineEdit#jobInput:focus { border-color: rgba(255,255,255,0.35); }
+            QLineEdit#inp:focus { border-color: rgba(255,255,255,0.35); }
             QTextEdit#jdInput {
                 color: white; background: #22242a;
                 border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
                 padding: 8px 12px; font-size: 13px;
             }
             QTextEdit#jdInput:focus { border-color: rgba(255,255,255,0.35); }
+            #ghostBtn {
+                color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+                padding: 8px 14px; font-size: 13px;
+            }
+            #ghostBtn:hover { background: rgba(255,255,255,0.15); }
             #startBtn {
                 color: white; background: #0a84ff; border: none;
                 border-radius: 8px; padding: 10px 0; font-size: 15px; font-weight: 600;
             }
             #startBtn:hover { background: #2b94ff; }
             #startBtn:pressed { background: #0a74e0; }
+            #startBtn:disabled { background: #33363d; color: rgba(255,255,255,0.35); }
         """)
 
     def closeEvent(self, e):

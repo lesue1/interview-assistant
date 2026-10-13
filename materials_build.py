@@ -44,39 +44,54 @@ def pick_source():
     return None
 
 
+def extract_to_materials(src):
+    """把简历 PDF 提取成 materials\\resume.txt。
+
+    返回 (成功?, 给人看的一句话)。设置窗的「导入简历」按钮直接调这个函数，
+    所以这里不 print，把结果交回调用方去显示。
+    """
+    if not src or not os.path.isfile(src):
+        return False, f"找不到文件：{src}"
+
+    try:
+        import pymupdf
+    except ImportError:
+        return False, "缺 pymupdf —— 先跑一次 setup.bat 装依赖"
+
+    try:
+        doc = pymupdf.open(src)
+        text = "\n".join(page.get_text() for page in doc).strip()
+        pages = len(doc)
+    except Exception as e:
+        return False, f"打不开这个 PDF：{e}"
+
+    if not text:
+        return False, "这个 PDF 里没提取到文字 —— 可能是扫描件，得先 OCR 成文字版"
+
+    os.makedirs(PROCESSED, exist_ok=True)
+    if os.path.isfile(DST):
+        bak = os.path.join(PROCESSED, f"resume_旧_{time.strftime('%Y%m%d_%H%M%S')}.txt")
+        try:
+            shutil.copyfile(DST, bak)
+        except OSError:
+            pass
+
+    with open(DST, "w", encoding="utf-8") as f:
+        f.write(text)
+    return True, f"简历已导入（{pages} 页 / {len(text)} 字）"
+
+
 def main():
     src = pick_source()
     if not src:
         print("用法：python materials_build.py <你的简历.pdf>")
         print("  或者把简历 PDF 放进 materials\\ 目录（只放一个），再不带参数运行。")
         return 1
-    if not os.path.isfile(src):
-        print(f"[素材] 找不到简历文件：{src}")
-        return 1
-
-    os.makedirs(PROCESSED, exist_ok=True)
-    if os.path.isfile(DST):
-        bak = os.path.join(PROCESSED, f"resume_旧_{time.strftime('%Y%m%d_%H%M%S')}.txt")
-        shutil.copyfile(DST, bak)
-        print(f"[素材] 旧简历已备份 → {bak}")
-
-    try:
-        import pymupdf
-    except ImportError:
-        print("[素材] 缺 pymupdf。先跑：.venv\\Scripts\\pip install pymupdf")
-        return 1
-
-    doc = pymupdf.open(src)
-    text = "\n".join(page.get_text() for page in doc).strip()
-    if not text:
-        print(f"[素材] {src} 里没提取到文字 —— 可能是扫描件，需要 OCR。")
-        return 1
-
-    with open(DST, "w", encoding="utf-8") as f:
-        f.write(text)
-    print(f"[素材] 简历已刷新 → {DST}（{len(text)} 字，{len(doc)} 页）")
-    print(f"[素材] 来源：{src}")
-    return 0
+    ok, msg = extract_to_materials(src)
+    print(f"[素材] {msg}")
+    if ok:
+        print(f"[素材] 来源：{src}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

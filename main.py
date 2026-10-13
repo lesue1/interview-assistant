@@ -264,11 +264,12 @@ class _StreamParser:
 
 
 class Controller:
-    def __init__(self, bridge, win, job_name, jd):
+    def __init__(self, bridge, win, job_name, jd, company=""):
         self.bridge = bridge
         self.win = win
         self.job_name = job_name
         self.jd = jd
+        self.company = company
         self.store = TranscriptStore(SESSIONS_DIR, job_name=job_name, jd=jd)
         self.hotkeys = load_config()
         self._gen_lock = threading.Lock()
@@ -515,7 +516,7 @@ class Controller:
         print(f"[asr] 模型就绪（{self.asr.device_used}）", flush=True)
         self.asr.start()
 
-        self.gen = AnswerGenerator(self.jd)
+        self.gen = AnswerGenerator(self.jd, self.company)
         print("[llm] 素材与 DeepSeek client 就绪", flush=True)
 
         # 两个 PyAudio 设备必须串行创建（并发 open 会段错误），放主线程像 M2 一样
@@ -579,10 +580,10 @@ def main():
         state["win"] = None
         setup.show()
 
-    def on_start(job, jd):
+    def on_start(job, jd, company):
         win = AnswerWindow()
         bridge = Bridge()
-        ctrl = Controller(bridge, win, job, jd)
+        ctrl = Controller(bridge, win, job, jd, company)
 
         bridge.sig_chunk.connect(win.append_chunk)
         bridge.sig_question.connect(win.set_question)
